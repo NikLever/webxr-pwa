@@ -1,19 +1,10 @@
-import * as THREE from '../../libs/three137/three.module.js';
-import { GLTFLoader } from '../../libs/three137/GLTFLoader.js';
-import { RGBELoader } from '../../libs/three137/RGBELoader.js';
-import { NPCHandler } from './NPCHandler.js';
-import { LoadingBar } from '../../libs/LoadingBar.js';
-import { Pathfinding } from '../../libs/pathfinding/Pathfinding.js';
-import { User } from './User.js';
-import { Controller } from './Controller.js';
-import { BulletHandler } from './BulletHandler.js';
-import { UI } from './UI.js';
-import { EffectComposer } from '../../libs/three137/pp/EffectComposer.js';
-import { RenderPass } from '../../libs/three137/pp/RenderPass.js';
-import { ShaderPass } from '../../libs/three137/pp/ShaderPass.js';
-import { GammaCorrectionShader } from '../../libs/three137/pp/GammaCorrectionShader.js';
-import { Tween } from '../../libs/Toon3D.js';
-import { SFX } from '../../libs/SFX.js';
+
+import * as THREE from 'three';
+import { GLTFLoader } from '../threejs/examples/jsm/loaders/GLTFLoader.js';
+import { RGBELoader } from '../threejs/examples/jsm/loaders/RGBELoader.js';
+import { LoadingBar } from '../js/LoadingBar.js';
+import { VRButton } from '../js/VRButton.js';
+import { XRControllerModelFactory } from '../threejs/examples/jsm/webxr/XRControllerModelFactory.js';
 
 class Game{
 	constructor(){
@@ -25,17 +16,24 @@ class Game{
         this.loadingBar = new LoadingBar();
         this.loadingBar.visible = false;
 
-		this.assetsPath = '../../assets/';
-        
+		this.assetsPath = 'assets/';
+
 		this.camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 500 );
-		//this.camera.position.set( -10.6, 1.6, -1.46 );
-		this.camera.position.set( -10.6, 1.6, -3.5 );
+		this.camera.position.set( 0, 1.6, 0 );
+		//this.camera.position.set( -10.6, 1.6, -3.5 );
 		this.camera.rotation.y = -Math.PI*0.6;
+
+		this.dolly = new THREE.Object3D(  );
+        this.dolly.position.set(-10.6, 0, -1.46);
+        this.dolly.add( this.camera );
+        this.dummyCam = new THREE.Object3D();
+        this.camera.add( this.dummyCam );
 
 		let col = 0x201510;
 		this.scene = new THREE.Scene();
 		this.scene.background = new THREE.Color( col );
 		this.scene.fog = new THREE.Fog( col, 100, 200 );
+		this.scene.add( this.dolly );
 
 		const ambient = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
 		this.scene.add(ambient);
@@ -62,129 +60,19 @@ class Game{
 		this.renderer.setSize( window.innerWidth, window.innerHeight );
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 		container.appendChild( this.renderer.domElement );
-        this.setEnvironment();
-		
-		this.initPostProcessing();
 
-		this.load();
+        this.setEnvironment();
+		this.loadEnvironment();
 
 		this.raycaster = new THREE.Raycaster();
-		this.tmpVec = new THREE.Vector3();
-
-		this.active = false;
+		this.tmpPos = new THREE.Vector3();
+		this.tmpDir = new THREE.Vector3();
+		this.tmpQuat = new THREE.Quaternion();
 		
 		window.addEventListener( 'resize', this.resize.bind(this) );
 	}
 
-	initPostProcessing(){
-		this.composer = new EffectComposer( this.renderer );
-  		const renderPass = new RenderPass( this.scene, this.camera );
-  		this.composer.addPass( renderPass );
-		const gammaCorrectionPass = new ShaderPass( GammaCorrectionShader );
-		this.composer.addPass( gammaCorrectionPass );
-
-		const tintShader = {
-
-			uniforms: {
-		
-				'tDiffuse': { value: null },
-				'strength': { value: 0.0 }
-		
-			},
-		
-			vertexShader: /* glsl */`
-				varying vec2 vUv;
-				void main() {
-					vUv = uv;
-					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-				}`,
-		
-			fragmentShader: /* glsl */`
-				uniform float strength;
-				uniform sampler2D tDiffuse;
-				varying vec2 vUv;
-				void main() {
-					vec3 texel = texture2D(tDiffuse, vUv).rgb;
-					vec3 tintColor = vec3(1.0, 0.3, 0.3);
-					float luminance = (texel.r + texel.g + texel.b)/3.0;
-					vec3 tint = tintColor * luminance * 1.8;
-					vec3 color = mix(texel, tint, clamp(strength, 0.0, 1.0));
-					gl_FragColor = vec4(color, 1.0);
-				}`
-		
-		}; 
-		this.tintPass = new ShaderPass( tintShader );
-		this.composer.addPass( this.tintPass );	  
-	}
-
-	tintScreen(action){
-		this.tintPass.uniforms.strength.value = 1; 
-		const duration = (action=='shot') ? 3.0 : 1.5;
-		this.tween = new Tween( this.tintPass.uniforms.strength, 'value', 0, duration, this.removeTween.bind(this));
-	}
-
-	removeTween(){
-		delete this.tween;
-	}
-
-	startGame(){
-		this.user.reset();
-		this.npcHandler.reset();
-		this.ui.ammo = 1;
-		this.ui.health = 1;
-		this.active = true;
-		this.controller.cameraBase.getWorldPosition(this.camera.position);
-        this.controller.cameraBase.getWorldQuaternion(this.camera.quaternion);
-		this.sfx.play('atmos');
-	}
-
-	seeUser(pos, seethrough=false){
-		if (this.seethrough){
-			this.seethrough.forEach( child => {
-				child.material.transparent = false;
-				child.material.opacity = 1;
-				//child.visible = true;
-			});
-			delete this.seethrough;
-		}
-
-		this.tmpVec.copy(this.user.position).sub(pos).normalize();
-		this.raycaster.set(pos, this.tmpVec);
-
-		const intersects = this.raycaster.intersectObjects(this.factory.children, true);
-		let userVisible = true;
-
-		if (intersects.length>0){
-			const dist = this.tmpVec.copy(this.user.position).distanceTo(pos);
-			
-			if (seethrough){
-				this.seethrough = [];
-				intersects.some( intersect => {
-					if (intersect.distance < dist){
-						this.seethrough.push(intersect.object);
-						//intersect.object.visible = false;
-						intersect.object.material.transparent = true;
-						intersect.object.material.opacity = 0.3;
-					}else{
-						return true;
-					}
-				})
-			}else{
-				userVisible = (intersects[0].distance > dist);
-			}
-			
-		}
-
-		return userVisible;
-	}
-
-	gameover(){
-		this.active = false;
-		this.ui.showGameover();
-		this.sfx.stop('atmos');
-	}
-
-	initPathfinding(navmesh){
+	/*initPathfinding(navmesh){
 		this.waypoints = [
 			new THREE.Vector3(17.73372016326552, 0.39953298254866443, -0.7466724607286782),
 			new THREE.Vector3(20.649478054772402, 0.04232912113775987, -18.282935518174437),
@@ -198,7 +86,7 @@ class Game{
 		this.pathfinder = new Pathfinding();
         this.pathfinder.setZoneData('factory', Pathfinding.createZone(navmesh.geometry, 0.02));
 		if (this.npcHandler.gltf !== undefined) this.npcHandler.initNPCs();
-	}
+	}*/
 	
     resize(){
         this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -207,11 +95,13 @@ class Game{
     }
     
     setEnvironment(){
-        const loader = new RGBELoader().setPath(this.assetsPath);
+        const loader = new RGBELoader().setPath('');
         const pmremGenerator = new THREE.PMREMGenerator( this.renderer );
         pmremGenerator.compileEquirectangularShader();
         
-        loader.load( 'hdr/factory.hdr', 
+		this.loadingBar.visible = true;
+
+        loader.load( 'images/factory.hdr', 
 		texture => {
           const envMap = pmremGenerator.fromEquirectangular( texture ).texture;
           pmremGenerator.dispose();
@@ -227,23 +117,16 @@ class Game{
             console.error( err.message );
         } );
     }
-    
-	load(){
-        this.loadEnvironment();
-		this.npcHandler = new NPCHandler(this);
-		this.user = new User(this, new THREE.Vector3( -5.97, 0.021, -1.49), 1.57);
-		this.ui = new UI(this);
-    }
 
     loadEnvironment(){
-    	const loader = new GLTFLoader( ).setPath(`${this.assetsPath}factory/`);
+    	const loader = new GLTFLoader( ).setPath(this.assetsPath);
         
         this.loadingBar.visible = true;
 		
 		// Load a glTF resource
 		loader.load(
 			// resource URL
-			'factory2.glb',
+			'factory.glb',
 			// called when the resource is loaded
 			gltf => {
 
@@ -297,9 +180,9 @@ class Game{
 					});
 				}
 
-				this.initPathfinding(this.navmesh);
-
 				this.loadingBar.visible = !this.loadingBar.loaded;
+
+				this.setupXR();
 			},
 			// called while loading is progressing
 			xhr => {
@@ -315,25 +198,97 @@ class Game{
 			}
 		);
 	}			
+
+	setupXR(){
+        this.renderer.xr.enabled = true;
+
+        const self = this;
+ 
+        function vrStatus( available ){
+            if (available){
+        
+                function onSelectStart( event ) {
+
+                    this.userData.selectPressed = true;
+
+                }
+
+                function onSelectEnd( event ) {
+
+                    this.userData.selectPressed = false;
+
+                }
+
+                self.controllers = self.buildControllers( self.dolly );
+
+                self.controllers.forEach( ( controller ) =>{
+                    controller.addEventListener( 'selectstart', onSelectStart );
+                    controller.addEventListener( 'selectend', onSelectEnd );
+                });
+                
+            }
+        }
+        
+        const btn = new VRButton( this.renderer, { vrStatus } );
+        
+        this.renderer.setAnimationLoop( this.render.bind(this) );
+    }
     
-	initSounds(){
-		this.listener = new THREE.AudioListener();
-        this.camera.add( this.listener );
-		this.sfx = new SFX(this.camera, `${this.assetsPath}factory/sfx/`, this.listener);
-		this.sfx.load('atmos', true, 0.1);
-		this.user.initSounds();
-		this.npcHandler.npcs.forEach( npc => npc.initSounds() );
-	}
-	
-	startRendering(){
-		if (this.npcHandler.ready && this.user.ready && this.bulletHandler == undefined){
-			this.controller = new Controller(this);
-			this.bulletHandler = new BulletHandler(this);
-			this.renderer.setAnimationLoop( this.render.bind(this) );
-			this.ui.visible = true;
-			this.initSounds();
+    buildControllers( parent = this.scene ){
+        const controllerModelFactory = new XRControllerModelFactory();
+
+        const geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, -1 ) ] );
+
+        const line = new THREE.Line( geometry );
+        line.scale.z = 0;
+        
+        const controllers = [];
+        
+        for(let i=0; i<=1; i++){
+            const controller = this.renderer.xr.getController( i );
+            controller.add( line.clone() );
+            controller.userData.selectPressed = false;
+            parent.add( controller );
+            controllers.push( controller );
+            
+            const grip = this.renderer.xr.getControllerGrip( i );
+            grip.add( controllerModelFactory.createControllerModel( grip ) );
+            parent.add( grip );
+        }
+        
+        return controllers;
+    }
+    
+    moveDolly(dt){
+        if (this.navmesh === undefined) return;
+        
+        const speed = 2;
+		let startPos = this.dolly.position.clone();
+		let startQuat = this.dolly.quaternion.clone();
+
+		this.dolly.quaternion.copy( this.dummyCam.getWorldQuaternion(this.tmpQuat) );
+		this.dolly.translateZ(-dt*speed);
+    	this.dolly.getWorldPosition( this.tmpPos );
+		
+		this.tmpDir.set(0,-1,0);
+        this.tmpPos.y += 2;
+        
+		this.raycaster.set(this.tmpPos, this.tmpDir);
+		
+        let intersect = this.raycaster.intersectObject(this.navmesh);
+        if (intersect.length==0){
+            this.dolly.position.copy( startPos )
+		}else{
+			this.dolly.position.copy(intersect[0].point);
 		}
+
+        //Restore the original rotation
+        this.dolly.quaternion.copy( startQuat );
 	}
+		
+    get selectPressed(){
+        return ( this.controllers !== undefined && (this.controllers[0].userData.selectPressed || this.controllers[1].userData.selectPressed) );    
+    }
 
 	render() {
 		const dt = this.clock.getDelta();
@@ -344,17 +299,9 @@ class Game{
             });
         }
 
-		if (this.npcHandler !== undefined ) this.npcHandler.update(dt);
-		if (this.user !== undefined ) this.user.update(dt);
-		if (this.controller !== undefined) this.controller.update(dt);
-		if (this.bulletHandler !== undefined) this.bulletHandler.update(dt);
-		if (this.tween !== undefined) this.tween.update(dt);
+        if (this.renderer.xr.isPresenting && this.selectPressed) this.moveDolly(dt);
 
-		if (this.composer){
-			this.composer.render();
-		}else{
-        	this.renderer.render( this.scene, this.camera );
-		}
+        this.renderer.render( this.scene, this.camera );
 
     }
 }

@@ -7,10 +7,25 @@
     <link rel="stylesheet" href="css/styles.css">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="images/logo192.png">
-    <title>Basic PWA Example</title>
+    <title>WebXR PWA Example</title>
 </head>
 <body>
-    Hello world!
+    <!-- Remove this when import maps will be widely supported -->
+	<script async src="https://unpkg.com/es-module-shims@1.3.6/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+            "three": "./threejs/build/three.module.js"
+            }
+        }
+    </script>
     <script src="js/index.js"></script>
+    <script src="js/fas.js"></script>
+    <script type="module">
+        import {Game} from "./js/Game.js";
+
+        const game = new Game();
+        window.game = game;
+    </script>
 </body>
 </html>

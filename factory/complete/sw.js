@@ -6,7 +6,18 @@ self.addEventListener("install", e => {
                 './',
                 './css/styles.css',
                 './images/logo192.png',
-                './js/index.js'
+                './js/index.js',
+                './js/fas.js',
+                './js/Game.js',
+                './js/LoadingBar.js',
+                './js/VRButton.js',
+                './threejs/build/three.module.js',
+                './threejs/examples/jsm/libs/motion-controllers.module.js',
+                './threejs/examples/jsm/loaders/GLTFLoader.js',
+                './threejs/examples/jsm/loaders/RGBELoader.js',
+                './threejs/examples/jsm/webxr/XRControllerModelFactory.js',
+                './images/factory.hdr',
+                './assets/factory.glb'
             ])
         })
     );

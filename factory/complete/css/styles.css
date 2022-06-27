@@ -1,6 +1,8 @@
 body{
+    margin: 0;
+    padding: 0;
     font-family: Arial, Helvetica, sans-serif;
     font-size: large;
     color: #fff;
-    background-color: salmon;
+    background-color: black;
 }

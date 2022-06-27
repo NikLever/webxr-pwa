@@ -1,9 +1,9 @@
 {
-    "name":"Simple PWA Example",
-    "short_name":"SimplePWA",
+    "name":"WebXR PWA Example",
+    "short_name":"WebXRPWA",
     "start_url":".",
     "background_color": "#fff",
-    "theme_color":"#ff0",
+    "theme_color":"#4d0",
     "display":"standalone",
     "icons":[
         {
