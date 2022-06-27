@@ -1,6 +1,7 @@
 {
     "name":"WebXR PWA Example",
     "short_name":"WebXRPWA",
+    "description":"WebXR PWA Example for my WebXR course",
     "start_url":".",
     "background_color": "#fff",
     "theme_color":"#4d0",
